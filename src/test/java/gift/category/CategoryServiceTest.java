@@ -59,7 +59,6 @@ class CategoryServiceTest {
     @Test
     void update_existingCategory_updatesFields() {
         given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
-        given(categoryRepository.save(any(Category.class))).willAnswer(invocation -> invocation.getArgument(0));
         var request = new CategoryRequest("수정됨", "#000000", "http://img.test/updated.png", "수정 설명");
 
         var result = categoryService.update(1L, request);

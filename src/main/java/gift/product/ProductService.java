@@ -45,7 +45,7 @@ public class ProductService {
         Product product = productRepository.findById(id).orElseThrow();
         Category category = categoryRepository.findById(request.categoryId()).orElseThrow();
         product.update(request.name(), request.price(), request.imageUrl(), category);
-        return productRepository.save(product);
+        return product;
     }
 
     @Transactional

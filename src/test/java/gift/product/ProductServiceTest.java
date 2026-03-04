@@ -114,7 +114,6 @@ class ProductServiceTest {
         var request = new ProductRequest("수정됨", 9999, "http://img.test/updated.png", 1L);
         given(productRepository.findById(1L)).willReturn(Optional.of(product));
         given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
-        given(productRepository.save(any(Product.class))).willAnswer(inv -> inv.getArgument(0));
 
         var result = productService.update(1L, request);
 
