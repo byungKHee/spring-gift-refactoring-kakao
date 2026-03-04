@@ -34,14 +34,24 @@ public class ProductService {
 
     @Transactional
     public Product create(ProductRequest request) {
-        validateName(request.name());
+        return create(request, false);
+    }
+
+    @Transactional
+    public Product create(ProductRequest request, boolean allowKakao) {
+        validateName(request.name(), allowKakao);
         Category category = categoryRepository.findById(request.categoryId()).orElseThrow();
         return productRepository.save(request.toEntity(category));
     }
 
     @Transactional
     public Product update(Long id, ProductRequest request) {
-        validateName(request.name());
+        return update(id, request, false);
+    }
+
+    @Transactional
+    public Product update(Long id, ProductRequest request, boolean allowKakao) {
+        validateName(request.name(), allowKakao);
         Product product = productRepository.findById(id).orElseThrow();
         Category category = categoryRepository.findById(request.categoryId()).orElseThrow();
         product.update(request.name(), request.price(), request.imageUrl(), category);
@@ -57,8 +67,8 @@ public class ProductService {
         return categoryRepository.findAll();
     }
 
-    private void validateName(String name) {
-        List<String> errors = ProductNameValidator.validate(name);
+    private void validateName(String name, boolean allowKakao) {
+        List<String> errors = ProductNameValidator.validate(name, allowKakao);
         if (!errors.isEmpty()) {
             throw new IllegalArgumentException(String.join(", ", errors));
         }
