@@ -110,6 +110,17 @@ class ProductServiceTest {
     }
 
     @Test
+    void create_kakaoName_allowTrue_succeeds() {
+        var request = new ProductRequest("카카오상품", 5000, "http://img.test/new.png", 1L);
+        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(productRepository.save(any(Product.class))).willAnswer(inv -> inv.getArgument(0));
+
+        var result = productService.create(request, true);
+
+        assertThat(result.getName()).isEqualTo("카카오상품");
+    }
+
+    @Test
     void update_happyPath_updates() {
         var request = new ProductRequest("수정됨", 9999, "http://img.test/updated.png", 1L);
         given(productRepository.findById(1L)).willReturn(Optional.of(product));

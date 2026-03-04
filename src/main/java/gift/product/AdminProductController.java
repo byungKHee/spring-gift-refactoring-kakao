@@ -39,13 +39,12 @@ public class AdminProductController {
         @RequestParam Long categoryId,
         Model model
     ) {
-        List<String> errors = ProductNameValidator.validate(name, true);
-        if (!errors.isEmpty()) {
-            populateNewForm(model, errors, name, price, imageUrl, categoryId);
+        try {
+            productService.create(new ProductRequest(name, price, imageUrl, categoryId), true);
+        } catch (IllegalArgumentException e) {
+            populateNewForm(model, List.of(e.getMessage()), name, price, imageUrl, categoryId);
             return "product/new";
         }
-
-        productService.create(new ProductRequest(name, price, imageUrl, categoryId));
         return "redirect:/admin/products";
     }
 
@@ -66,14 +65,13 @@ public class AdminProductController {
         @RequestParam Long categoryId,
         Model model
     ) {
-        List<String> errors = ProductNameValidator.validate(name, true);
-        if (!errors.isEmpty()) {
+        try {
+            productService.update(id, new ProductRequest(name, price, imageUrl, categoryId), true);
+        } catch (IllegalArgumentException e) {
             Product product = productService.findById(id);
-            populateEditForm(model, product, errors, name, price, imageUrl, categoryId);
+            populateEditForm(model, product, List.of(e.getMessage()), name, price, imageUrl, categoryId);
             return "product/edit";
         }
-
-        productService.update(id, new ProductRequest(name, price, imageUrl, categoryId));
         return "redirect:/admin/products";
     }
 
