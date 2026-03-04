@@ -114,7 +114,6 @@ class MemberServiceTest {
     @Test
     void update_updatesFields() {
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
-        given(memberRepository.save(any(Member.class))).willAnswer(inv -> inv.getArgument(0));
 
         var result = memberService.update(1L, "updated@test.com", "newpw");
 
@@ -128,7 +127,6 @@ class MemberServiceTest {
         memberService.chargePoint(1L, 1000);
 
         assertThat(member.getPoint()).isEqualTo(1000);
-        then(memberRepository).should().save(member);
     }
 
     @Test
