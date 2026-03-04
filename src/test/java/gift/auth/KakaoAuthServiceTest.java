@@ -22,6 +22,9 @@ import static org.mockito.Mockito.verify;
 class KakaoAuthServiceTest {
 
     @Mock
+    private KakaoLoginProperties properties;
+
+    @Mock
     private KakaoLoginClient kakaoLoginClient;
 
     @Mock
@@ -99,6 +102,20 @@ class KakaoAuthServiceTest {
         kakaoAuthService.loginOrRegister("code123");
 
         verify(jwtProvider).createToken("test@kakao.com");
+    }
+
+    @Test
+    void buildAuthorizationUrl_returnsValidKakaoUrl() {
+        given(properties.clientId()).willReturn("test-client-id");
+        given(properties.redirectUri()).willReturn("http://localhost:8080/api/auth/kakao/callback");
+
+        var url = kakaoAuthService.buildAuthorizationUrl();
+
+        assertThat(url).contains("https://kauth.kakao.com/oauth/authorize");
+        assertThat(url).contains("client_id=test-client-id");
+        assertThat(url).contains("redirect_uri=http://localhost:8080/api/auth/kakao/callback");
+        assertThat(url).contains("response_type=code");
+        assertThat(url).contains("scope=account_email,talk_message");
     }
 
     @Test
