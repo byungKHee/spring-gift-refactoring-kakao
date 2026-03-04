@@ -35,15 +35,11 @@ public class OptionService {
 
     @Transactional
     public void delete(Long productId, Long optionId) {
-        productRepository.findById(productId).orElseThrow();
-        List<Option> options = optionRepository.findByProductId(productId);
-        if (options.size() <= 1) {
-            throw new IllegalArgumentException("옵션이 1개인 상품은 옵션을 삭제할 수 없습니다.");
-        }
+        Product product = productRepository.findById(productId).orElseThrow();
         Option option = optionRepository.findById(optionId)
             .filter(o -> o.getProduct().getId().equals(productId))
             .orElseThrow();
-        optionRepository.delete(option);
+        product.removeOption(option);
     }
 
     private void validateName(String name) {
