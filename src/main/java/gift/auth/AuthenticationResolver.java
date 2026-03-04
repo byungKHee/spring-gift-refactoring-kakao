@@ -18,9 +18,12 @@ public class AuthenticationResolver {
         try {
             final String token = authorization.replace("Bearer ", "");
             final String email = jwtProvider.getEmail(token);
-            return memberRepository.findByEmail(email).orElse(null);
+            return memberRepository.findByEmail(email)
+                .orElseThrow(() -> new UnauthorizedException("인증된 사용자를 찾을 수 없습니다."));
+        } catch (UnauthorizedException e) {
+            throw e;
         } catch (Exception e) {
-            return null;
+            throw new UnauthorizedException("유효하지 않은 인증 정보입니다.");
         }
     }
 }
