@@ -73,6 +73,13 @@ public class Product {
         return category;
     }
 
+    public void removeOption(Option option) {
+        if (options.size() <= 1) {
+            throw new IllegalArgumentException("옵션이 1개인 상품은 옵션을 삭제할 수 없습니다.");
+        }
+        options.remove(option);
+    }
+
     public List<Option> getOptions() {
         return options;
     }

@@ -104,19 +104,21 @@ class OptionServiceTest {
     @Test
     void delete_happyPath_deletes() {
         var option2 = TestFixtures.option(2L, product, "추가 옵션", 50);
+        product.getOptions().add(option);
+        product.getOptions().add(option2);
         given(productRepository.findById(1L)).willReturn(Optional.of(product));
-        given(optionRepository.findByProductId(1L)).willReturn(List.of(option, option2));
         given(optionRepository.findById(1L)).willReturn(Optional.of(option));
 
         optionService.delete(1L, 1L);
 
-        then(optionRepository).should().delete(option);
+        assertThat(product.getOptions()).doesNotContain(option);
     }
 
     @Test
     void delete_onlyOneOption_throws() {
+        product.getOptions().add(option);
         given(productRepository.findById(1L)).willReturn(Optional.of(product));
-        given(optionRepository.findByProductId(1L)).willReturn(List.of(option));
+        given(optionRepository.findById(1L)).willReturn(Optional.of(option));
 
         assertThatThrownBy(() -> optionService.delete(1L, 1L))
             .isInstanceOf(IllegalArgumentException.class)
@@ -125,12 +127,10 @@ class OptionServiceTest {
 
     @Test
     void delete_optionNotOwnedByProduct_throws() {
-        var option2 = TestFixtures.option(2L, product, "추가 옵션", 50);
         var otherProduct = TestFixtures.product(2L, "다른 상품", TestFixtures.category());
         var foreignOption = TestFixtures.option(3L, otherProduct, "외부 옵션", 10);
 
         given(productRepository.findById(1L)).willReturn(Optional.of(product));
-        given(optionRepository.findByProductId(1L)).willReturn(List.of(option, option2));
         given(optionRepository.findById(3L)).willReturn(Optional.of(foreignOption));
 
         assertThatThrownBy(() -> optionService.delete(1L, 3L))
