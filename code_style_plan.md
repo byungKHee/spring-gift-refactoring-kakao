@@ -688,3 +688,135 @@ if (member == null) {
 | 누락된 작동 구현 + 테스트 증거 | 6-A, 6-B |
 | 도메인 책임 되찾기 (2개 이상) | 3 (인증 중복 제거), 4 (검증 위임), 5 (회원 생성), 7-A (옵션 규칙) |
 | 구조/작동 커밋 분리 | 모든 Phase에서 분리 |
+
+---
+
+# Step2 추가 개선: 예외 처리 체계화 + 컨트롤러 테스트
+
+## Context
+
+Step2 리팩토링(Phase 1~7)이 완료되어 85개 테스트가 통과하는 상태이다.
+현재 두 가지 문제가 있다:
+
+1. **예외 처리 비체계적** — 모든 비즈니스 에러가 `IllegalArgumentException` 하나로 처리되어 에러 구분이 불가능하고, 응답 형식이 일관되지 않음 (400은 String body, 404는 body 없음)
+2. **컨트롤러 테스트 0개** — HTTP 매핑, 상태 코드, 인증 흐름, 입력 검증이 전혀 검증되지 않음
+
+**Phase 8에서 에러 응답 구조를 먼저 정리한 뒤, Phase 9에서 컨트롤러 테스트로 검증한다.**
+
+---
+
+## Phase 8: 예외 처리 체계화 (구조 변경 2커밋)
+
+### 커밋 8-A: `refactor(config): 통일된 에러 응답 구조 도입`
+
+현재 에러 응답이 일관되지 않다:
+- 400: `ResponseEntity<String>` (메시지만)
+- 401: `ResponseEntity<Void>` (body 없음)
+- 403: `ResponseEntity<String>` (메시지만)
+- 404: `ResponseEntity<String>` (body 없음)
+
+**변경:**
+
+- 신규 `gift/config/ErrorResponse.java` — `record ErrorResponse(String code, String message)`
+- `GlobalExceptionHandler.java` 수정:
+  - `IllegalArgumentException` → `400 + ErrorResponse("BAD_REQUEST", e.getMessage())`
+  - `NoSuchElementException` → `404 + ErrorResponse("NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.")`
+  - `IllegalStateException` → `403 + ErrorResponse("FORBIDDEN", e.getMessage())`
+  - `UnauthorizedException` → `401 + ErrorResponse("UNAUTHORIZED", e.getMessage())`
+- 기존 테스트 변경 없음 (서비스 테스트는 예외 타입만 검증, HTTP 응답 형식은 검증하지 않음)
+
+### 커밋 8-B: `refactor(config): MethodArgumentNotValidException 핸들러 추가`
+
+현재 `@Valid` 검증 실패 시 Spring 기본 에러 응답이 반환된다. 이를 `ErrorResponse` 형식으로 통일한다.
+
+- `GlobalExceptionHandler.java` — `MethodArgumentNotValidException` 핸들러 추가
+  - 첫 번째 필드 에러 메시지를 `ErrorResponse("VALIDATION_FAILED", message)`로 반환
+  - 400 상태코드
+
+---
+
+## Phase 9: 컨트롤러 테스트 추가 (테스트 5커밋)
+
+`@WebMvcTest` + `MockMvc`로 HTTP 계층을 검증한다. 서비스는 `@MockBean`으로 목킹.
+`AuthenticationResolver`도 `@MockBean`으로 주입하여 인증 필요 컨트롤러 테스트.
+
+### 커밋 9-A: `test(product): ProductController 테스트 추가`
+
+`src/test/java/gift/product/ProductControllerTest.java` (신규, ~7개 테스트)
+
+| 테스트 | 검증 |
+|--------|------|
+| `getProducts_returnsPagedProducts` | GET /api/products → 200 + JSON |
+| `getProduct_existing_returns200` | GET /api/products/1 → 200 + JSON |
+| `getProduct_notFound_returns404` | GET /api/products/99 → 404 + ErrorResponse |
+| `createProduct_valid_returns201` | POST /api/products + valid body → 201 |
+| `createProduct_invalidName_returns400` | POST /api/products + blank name → 400 |
+| `updateProduct_valid_returns200` | PUT /api/products/1 + valid body → 200 |
+| `deleteProduct_returns204` | DELETE /api/products/1 → 204 |
+
+### 커밋 9-B: `test(category): CategoryController 테스트 추가`
+
+`src/test/java/gift/category/CategoryControllerTest.java` (신규, ~5개 테스트)
+
+| 테스트 | 검증 |
+|--------|------|
+| `getCategories_returnsList` | GET /api/categories → 200 + JSON 배열 |
+| `createCategory_valid_returns201` | POST /api/categories + valid body → 201 |
+| `updateCategory_valid_returns200` | PUT /api/categories/1 + valid body → 200 |
+| `updateCategory_notFound_returns404` | PUT /api/categories/99 → 404 + ErrorResponse |
+| `deleteCategory_returns204` | DELETE /api/categories/1 → 204 |
+
+### 커밋 9-C: `test(order): OrderController 인증 포함 테스트 추가`
+
+`src/test/java/gift/order/OrderControllerTest.java` (신규, ~5개 테스트)
+
+| 테스트 | 검증 |
+|--------|------|
+| `getOrders_authenticated_returns200` | GET + 유효 토큰 → 200 |
+| `getOrders_unauthenticated_returns401` | GET + 잘못된 토큰 → 401 + ErrorResponse |
+| `createOrder_authenticated_returns201` | POST + 유효 토큰 + valid body → 201 |
+| `createOrder_unauthenticated_returns401` | POST + 토큰 없음 → 401 |
+| `createOrder_invalidBody_returns400` | POST + 유효 토큰 + invalid body → 400 |
+
+### 커밋 9-D: `test(wish): WishController 인증 포함 테스트 추가`
+
+`src/test/java/gift/wish/WishControllerTest.java` (신규, ~5개 테스트)
+
+| 테스트 | 검증 |
+|--------|------|
+| `getWishes_authenticated_returns200` | GET + 유효 토큰 → 200 |
+| `getWishes_unauthenticated_returns401` | GET + 잘못된 토큰 → 401 |
+| `addWish_new_returns201` | POST + created=true → 201 |
+| `addWish_duplicate_returns200` | POST + created=false → 200 |
+| `removeWish_returns204` | DELETE + 유효 토큰 → 204 |
+
+### 커밋 9-E: `test(member): MemberController 테스트 추가`
+
+`src/test/java/gift/member/MemberControllerTest.java` (신규, ~4개 테스트)
+
+| 테스트 | 검증 |
+|--------|------|
+| `register_valid_returns201` | POST /api/members/register → 201 + TokenResponse |
+| `register_duplicateEmail_returns400` | POST + 중복 이메일 → 400 + ErrorResponse |
+| `login_valid_returns200` | POST /api/members/login → 200 + TokenResponse |
+| `login_invalidCredentials_returns400` | POST + 잘못된 비밀번호 → 400 + ErrorResponse |
+
+---
+
+## 수정/생성 대상 파일 요약
+
+| 파일 | Phase |
+|------|-------|
+| `src/main/java/gift/config/ErrorResponse.java` | 8-A (신규) |
+| `src/main/java/gift/config/GlobalExceptionHandler.java` | 8-A, 8-B |
+| `src/test/java/gift/product/ProductControllerTest.java` | 9-A (신규) |
+| `src/test/java/gift/category/CategoryControllerTest.java` | 9-B (신규) |
+| `src/test/java/gift/order/OrderControllerTest.java` | 9-C (신규) |
+| `src/test/java/gift/wish/WishControllerTest.java` | 9-D (신규) |
+| `src/test/java/gift/member/MemberControllerTest.java` | 9-E (신규) |
+
+## 검증 방법
+
+- 각 커밋마다 `./gradlew test`로 전체 테스트 통과 확인
+- Phase 8 완료 후 기존 85개 테스트 회귀 없음 확인
+- Phase 9 완료 후 예상 총 테스트 수: ~111개 (85 + 26)
