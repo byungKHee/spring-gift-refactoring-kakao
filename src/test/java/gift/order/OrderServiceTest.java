@@ -59,15 +59,12 @@ class OrderServiceTest {
     void placeOrder_happyPath_completesAllSteps() {
         var request = new OrderRequest(1L, 2, "선물입니다");
         given(optionRepository.findById(1L)).willReturn(Optional.of(option));
-        given(memberRepository.save(any(Member.class))).willAnswer(inv -> inv.getArgument(0));
         given(orderRepository.save(any(Order.class))).willAnswer(inv -> inv.getArgument(0));
 
         var result = orderService.placeOrder(member, request);
 
         assertThat(result).isNotNull();
         assertThat(result.getQuantity()).isEqualTo(2);
-        then(optionRepository).should().save(option);
-        then(memberRepository).should().save(member);
         then(orderRepository).should().save(any(Order.class));
     }
 
@@ -105,7 +102,6 @@ class OrderServiceTest {
     void placeOrder_savesOrderWithCorrectFields() {
         var request = new OrderRequest(1L, 3, "축하합니다");
         given(optionRepository.findById(1L)).willReturn(Optional.of(option));
-        given(memberRepository.save(any(Member.class))).willAnswer(inv -> inv.getArgument(0));
         given(orderRepository.save(any(Order.class))).willAnswer(inv -> inv.getArgument(0));
 
         var result = orderService.placeOrder(member, request);
@@ -120,7 +116,6 @@ class OrderServiceTest {
     void placeOrder_calculatesCorrectPrice() {
         var request = new OrderRequest(1L, 5, null);
         given(optionRepository.findById(1L)).willReturn(Optional.of(option));
-        given(memberRepository.save(any(Member.class))).willAnswer(inv -> inv.getArgument(0));
         given(orderRepository.save(any(Order.class))).willAnswer(inv -> inv.getArgument(0));
 
         orderService.placeOrder(member, request);
@@ -135,7 +130,6 @@ class OrderServiceTest {
         kakaoMember.chargePoint(100000);
         var request = new OrderRequest(1L, 1, null);
         given(optionRepository.findById(1L)).willReturn(Optional.of(option));
-        given(memberRepository.save(any(Member.class))).willAnswer(inv -> inv.getArgument(0));
         given(orderRepository.save(any(Order.class))).willAnswer(inv -> inv.getArgument(0));
 
         orderService.placeOrder(kakaoMember, request);
@@ -147,7 +141,6 @@ class OrderServiceTest {
     void placeOrder_withoutKakaoToken_skipsNotification() {
         var request = new OrderRequest(1L, 1, null);
         given(optionRepository.findById(1L)).willReturn(Optional.of(option));
-        given(memberRepository.save(any(Member.class))).willAnswer(inv -> inv.getArgument(0));
         given(orderRepository.save(any(Order.class))).willAnswer(inv -> inv.getArgument(0));
 
         orderService.placeOrder(member, request);
@@ -161,7 +154,6 @@ class OrderServiceTest {
         kakaoMember.chargePoint(100000);
         var request = new OrderRequest(1L, 1, null);
         given(optionRepository.findById(1L)).willReturn(Optional.of(option));
-        given(memberRepository.save(any(Member.class))).willAnswer(inv -> inv.getArgument(0));
         given(orderRepository.save(any(Order.class))).willAnswer(inv -> inv.getArgument(0));
         doThrow(new RuntimeException("알림 실패")).when(kakaoMessageClient)
             .sendToMe(any(), any(), any());
