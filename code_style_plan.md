@@ -523,3 +523,168 @@ Mock 대상: `OrderRepository`, `OptionRepository`, `MemberRepository`, `KakaoMe
    - `GET /api/products?page=0` → 200 + 페이지 응답
    - `GET /admin/products` → 200 + HTML
    - 존재하지 않는 리소스 → 404
+
+---
+
+# Step2 리팩토링 계획
+
+## Context
+
+Step1에서 서비스 계층 추출과 TDD 기반 테스트(~75개)를 완성한 상태이다.
+Step2에서는 트랜잭션 경계 정리, 누락된 도메인 검증 추가, 책임 위치 교정을 수행한다.
+**구조 변경(리팩토링)과 작동 변경(새 기능)은 커밋을 반드시 분리한다.**
+
+---
+
+## Phase 1: 트랜잭션 내 불필요한 save() 제거 (구조 변경 3커밋)
+
+JPA dirty checking이 `@Transactional` 내 관리 엔티티의 변경을 자동 반영하므로 명시적 `save()` 호출이 불필요하다.
+
+### 커밋 1-A: `refactor(member): 트랜잭션 내 불필요한 save() 호출 제거`
+- `MemberService.java:61` — `update()`에서 `return memberRepository.save(member)` → `return member`
+- `MemberService.java:68` — `chargePoint()`에서 `memberRepository.save(member)` 제거
+- `MemberServiceTest.java:117` — `given(memberRepository.save(...))` 목 설정 제거
+- `MemberServiceTest.java:131` — `then(memberRepository).should().save(member)` 검증 제거
+
+### 커밋 1-B: `refactor(order): 트랜잭션 내 관리 엔티티의 불필요한 save() 호출 제거`
+- `OrderService.java:41` — `optionRepository.save(option)` 제거
+- `OrderService.java:45` — `memberRepository.save(member)` 제거
+- `OrderServiceTest.java` — `save()` 관련 목 설정/검증 제거 (happy path 포함 5개 테스트)
+
+### 커밋 1-C: `refactor(product, category): 트랜잭션 내 관리 엔티티의 불필요한 save() 호출 제거`
+- `ProductService.java:48` — `update()`에서 `return productRepository.save(product)` → `return product`
+- `CategoryService.java:30` — `update()`에서 `return categoryRepository.save(category)` → `return category`
+- 각 테스트의 해당 `save()` 목 설정 제거
+
+---
+
+## Phase 2: KakaoAuthService 트랜잭션 경계 추가 (구조 변경 1커밋)
+
+### 커밋 2: `refactor(auth): KakaoAuthService.loginOrRegister()에 @Transactional 추가`
+- `KakaoAuthService.java:32` — `loginOrRegister()` 메서드에 `@Transactional` 추가
+- 회원 조회/생성/토큰 업데이트/저장이 하나의 트랜잭션으로 묶여 원자성 보장
+- 테스트 변경 없음 (목 기반이라 트랜잭션 동작에 영향 없음)
+
+---
+
+## Phase 3: 인증 null 체크 패턴 제거 — 도메인 책임 개선 1 (구조 변경 1커밋)
+
+### 커밋 3: `refactor(auth): 인증 실패 시 예외를 던지도록 변경하여 컨트롤러 중복 제거`
+
+현재 `OrderController`와 `WishController`에서 동일한 인증 null 체크가 5회 반복된다.
+
+**변경 전:**
+```java
+var member = authenticationResolver.extractMember(authorization);
+if (member == null) {
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+}
+```
+
+**변경 후:** `AuthenticationResolver`가 인증 실패 시 예외를 던지고, `GlobalExceptionHandler`가 401 반환
+
+- 신규 파일: `gift/auth/UnauthorizedException.java` — `RuntimeException` 상속
+- `AuthenticationResolver.java` — `extractMember()`에서 null 대신 `UnauthorizedException` 던지기
+- `GlobalExceptionHandler.java` — `UnauthorizedException` → 401 핸들러 추가
+- `OrderController.java` — null 체크 2개 제거, `ResponseEntity<?>` → 구체 타입으로 변경
+- `WishController.java` — null 체크 3개 제거
+
+---
+
+## Phase 4: 관리자 컨트롤러 중복 검증 제거 — 도메인 책임 개선 2 (구조 변경 1커밋)
+
+### 커밋 4: `refactor(product): 관리자 컨트롤러의 중복 이름 검증을 서비스로 위임`
+
+현재 `AdminProductController`가 `ProductNameValidator.validate(name, true)`을 직접 호출하는데, 이는 서비스의 책임이다. 또한 컨트롤러는 `allowKakao=true`로 호출하지만 서비스는 `allowKakao=false`로 호출하여 어차피 서비스에서 거부된다.
+
+- `ProductService.java` — `create(request, allowKakao)`, `update(id, request, allowKakao)` 오버로드 추가
+- `AdminProductController.java` — `ProductNameValidator` 직접 호출 제거, 서비스에 `allowKakao=true` 위임. 서비스에서 던지는 `IllegalArgumentException`을 catch하여 폼 에러 처리
+- `populateNewForm()`/`populateEditForm()` 시그니처에서 errors 파라미터를 `List<String>` → `String` 또는 유지
+
+---
+
+## Phase 5: 카카오 로그인 회원 생성 로직 이동 — 도메인 책임 개선 3 (구조 변경 1커밋)
+
+### 커밋 5: `refactor(member): 카카오 로그인 시 회원 조회/생성 로직을 MemberService로 이동`
+
+`KakaoAuthService`가 직접 `MemberRepository`를 사용해 회원을 생성하는 것은 `MemberService`의 책임 누수이다.
+
+- `MemberService.java` — `findOrCreateByEmail(String email)` 메서드 추가
+- `KakaoAuthService.java` — `MemberRepository` 의존성을 `MemberService`로 교체
+- `KakaoAuthServiceTest.java` — `@Mock MemberRepository` → `@Mock MemberService`로 변경, 목 설정 수정
+
+---
+
+## Phase 6: 도메인 자체 검증 추가 (작동 변경 2커밋, 테스트 증거 포함)
+
+### 커밋 6-A: `feat(option): Option 생성 시 수량 양수 검증 추가`
+- `Option.java` 생성자 — `if (quantity < 1) throw new IllegalArgumentException("옵션 수량은 1 이상이어야 합니다.")`
+- 신규 테스트 `OptionTest.java`:
+  - `constructor_zeroQuantity_throwsException` — 수량 0으로 생성 시 예외
+  - `constructor_negativeQuantity_throwsException` — 음수 수량으로 생성 시 예외
+  - `constructor_validQuantity_createsSuccessfully` — 정상 수량 생성 후 `getQuantity()` 상태 검증
+  - `subtractQuantity_toZero_succeeds` — 전량 차감 후 `getQuantity() == 0` 상태 검증
+
+### 커밋 6-B: `feat(product): Product 생성 시 가격 양수 검증 추가`
+- `Product.java` 생성자 — `if (price < 1) throw new IllegalArgumentException("상품 가격은 1 이상이어야 합니다.")`
+- `Product.java` `update()` — 동일 검증 추가
+- 신규 테스트 `ProductTest.java`:
+  - `constructor_zeroPrice_throwsException` — 가격 0으로 생성 시 예외
+  - `constructor_negativePrice_throwsException` — 음수 가격으로 생성 시 예외
+  - `constructor_validPrice_createsSuccessfully` — 정상 가격 생성 후 `getPrice()` 상태 검증
+  - `update_zeroPrice_throwsException` — 가격 0으로 수정 시 예외
+
+---
+
+## Phase 7: 옵션 최소 개수 규칙을 Product 도메인으로 이동 (구조 1커밋 + 작동 1커밋)
+
+### 커밋 7-A: `refactor(product): 옵션 삭제 시 최소 1개 규칙을 Product 도메인으로 이동` (구조 변경)
+- `Product.java` — `removeOption(Option option)` 메서드 추가: `options.size() <= 1`이면 예외, 아니면 `options.remove(option)` (orphanRemoval로 DB 삭제)
+- `OptionService.java` — `delete()`에서 직접 size 체크와 `optionRepository.delete()` 대신 `product.removeOption(option)` 호출
+
+### 커밋 7-B: `test(product): Product.removeOption() 도메인 규칙 테스트 추가` (작동 증거)
+- `ProductTest.java`에 추가:
+  - `removeOption_lastOption_throwsException` — 옵션 1개인 Product에서 삭제 시 예외
+  - `removeOption_multipleOptions_removesSuccessfully` — 옵션 2개 중 1개 삭제 후 `getOptions().size() == 1` 상태 검증
+
+---
+
+## 수정 대상 파일 요약
+
+| 파일 | Phase |
+|------|-------|
+| `src/main/java/gift/member/MemberService.java` | 1-A, 5 |
+| `src/main/java/gift/order/OrderService.java` | 1-B |
+| `src/main/java/gift/product/ProductService.java` | 1-C, 4 |
+| `src/main/java/gift/category/CategoryService.java` | 1-C |
+| `src/main/java/gift/auth/KakaoAuthService.java` | 2, 5 |
+| `src/main/java/gift/auth/AuthenticationResolver.java` | 3 |
+| `src/main/java/gift/auth/UnauthorizedException.java` | 3 (신규) |
+| `src/main/java/gift/config/GlobalExceptionHandler.java` | 3 |
+| `src/main/java/gift/order/OrderController.java` | 3 |
+| `src/main/java/gift/wish/WishController.java` | 3 |
+| `src/main/java/gift/product/AdminProductController.java` | 4 |
+| `src/main/java/gift/option/Option.java` | 6-A |
+| `src/main/java/gift/product/Product.java` | 6-B, 7-A |
+| `src/main/java/gift/option/OptionService.java` | 7-A |
+| `src/test/java/gift/member/MemberServiceTest.java` | 1-A |
+| `src/test/java/gift/order/OrderServiceTest.java` | 1-B |
+| `src/test/java/gift/product/ProductServiceTest.java` | 1-C |
+| `src/test/java/gift/category/CategoryServiceTest.java` | 1-C |
+| `src/test/java/gift/auth/KakaoAuthServiceTest.java` | 5 |
+| `src/test/java/gift/option/OptionTest.java` | 6-A (신규) |
+| `src/test/java/gift/product/ProductTest.java` | 6-B, 7-B (신규) |
+
+## 검증 방법
+
+각 커밋마다 `./gradlew test`로 전체 테스트 통과 확인.
+작동 변경 커밋(6-A, 6-B, 7-B)은 상태 재조회 방식의 단위 테스트로 검증.
+
+## 요구사항 충족 매트릭스
+
+| 요구사항 | 충족 커밋 |
+|---------|----------|
+| 트랜잭션 경계 세우기 | 1-A, 1-B, 1-C, 2 |
+| 누락된 작동 구현 + 테스트 증거 | 6-A, 6-B |
+| 도메인 책임 되찾기 (2개 이상) | 3 (인증 중복 제거), 4 (검증 위임), 5 (회원 생성), 7-A (옵션 규칙) |
+| 구조/작동 커밋 분리 | 모든 Phase에서 분리 |
