@@ -4,7 +4,6 @@ import gift.auth.AuthenticationResolver;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,9 +33,6 @@ public class WishController {
         Pageable pageable
     ) {
         var member = authenticationResolver.extractMember(authorization);
-        if (member == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
         var wishes = wishService.findByMemberId(member.getId(), pageable).map(WishResponse::from);
         return ResponseEntity.ok(wishes);
     }
@@ -47,10 +43,6 @@ public class WishController {
         @Valid @RequestBody WishRequest request
     ) {
         var member = authenticationResolver.extractMember(authorization);
-        if (member == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         var result = wishService.add(member.getId(), request.productId());
         if (result.created()) {
             return ResponseEntity.created(URI.create("/api/wishes/" + result.wish().getId()))
@@ -65,10 +57,6 @@ public class WishController {
         @PathVariable Long id
     ) {
         var member = authenticationResolver.extractMember(authorization);
-        if (member == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         wishService.remove(member.getId(), id);
         return ResponseEntity.noContent().build();
     }
