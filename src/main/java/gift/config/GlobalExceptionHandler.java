@@ -3,6 +3,7 @@ package gift.config;
 import gift.auth.UnauthorizedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -32,5 +33,15 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
             .body(new ErrorResponse("FORBIDDEN", e.getMessage()));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+            .findFirst()
+            .map(error -> error.getDefaultMessage())
+            .orElse("잘못된 요청입니다.");
+        return ResponseEntity.badRequest()
+            .body(new ErrorResponse("VALIDATION_FAILED", message));
     }
 }
