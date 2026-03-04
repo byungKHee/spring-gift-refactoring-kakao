@@ -68,6 +68,12 @@ public class MemberService {
     }
 
     @Transactional
+    public Member findOrCreateByEmail(String email) {
+        return memberRepository.findByEmail(email)
+            .orElseGet(() -> memberRepository.save(new Member(email)));
+    }
+
+    @Transactional
     public void delete(Long id) {
         memberRepository.deleteById(id);
     }
