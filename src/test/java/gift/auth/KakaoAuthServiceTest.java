@@ -3,14 +3,18 @@ package gift.auth;
 import gift.TestFixtures;
 import gift.member.Member;
 import gift.member.MemberService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -29,8 +33,21 @@ class KakaoAuthServiceTest {
     @Mock
     private JwtProvider jwtProvider;
 
-    @InjectMocks
+    @Mock
+    private TransactionTemplate transactionTemplate;
+
     private KakaoAuthService kakaoAuthService;
+
+    @BeforeEach
+    void setUp() {
+        org.mockito.Mockito.lenient().when(transactionTemplate.execute(any())).thenAnswer(inv -> {
+            TransactionCallback<?> callback = inv.getArgument(0);
+            return callback.doInTransaction(new SimpleTransactionStatus());
+        });
+
+        kakaoAuthService = new KakaoAuthService(
+            properties, kakaoLoginClient, memberService, jwtProvider, transactionTemplate);
+    }
 
     @Test
     void loginOrRegister_existingMember_updatesTokenReturnsJwt() {

@@ -8,11 +8,13 @@ import gift.option.OptionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -42,7 +44,9 @@ class OrderServiceTest {
     @Mock
     private KakaoMessageClient kakaoMessageClient;
 
-    @InjectMocks
+    @Mock
+    private TransactionTemplate transactionTemplate;
+
     private OrderService orderService;
 
     private Member member;
@@ -50,6 +54,14 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(transactionTemplate.execute(any())).thenAnswer(inv -> {
+            TransactionCallback<?> callback = inv.getArgument(0);
+            return callback.doInTransaction(new SimpleTransactionStatus());
+        });
+
+        orderService = new OrderService(
+            orderRepository, optionRepository, kakaoMessageClient, transactionTemplate);
+
         member = TestFixtures.member(1L, "test@test.com", "password");
         member.chargePoint(100000);
         option = TestFixtures.option(1L, TestFixtures.product(), "기본 옵션", 100);
